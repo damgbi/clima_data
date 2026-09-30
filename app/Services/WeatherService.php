@@ -43,6 +43,11 @@ class WeatherService
         ]);
 
         if ($weatherResponse->failed()) {
+            \Illuminate\Support\Facades\Log::error('Erro Open-Meteo:', [
+                'status' => $weatherResponse->status(),
+                'body'   => $weatherResponse->body(),
+            ]);
+
             throw new Exception('Não foi possivel obter os dados meteorológicos. Por favor, tente novamente.');
         }
 
