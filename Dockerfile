@@ -1,5 +1,5 @@
 # Usa a imagem oficial do PHP 8.3 com Apache
-FROM php:8.3-apache
+FROM php:8.4-apache
 
 # Instala pacotes do sistema e extensões necessárias
 RUN apt-get update && apt-get install -y \
