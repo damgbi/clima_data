@@ -33,7 +33,7 @@ RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-av
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/conf-available/*.conf
 
 # Instala as dependências ignorando scripts automáticos durante a imagem
-RUN composer install --no-dev --optimize-autoloader --no-scripts
+RUN composer install --no-dev --no-scripts --ignore-platform-reqs
 
 # Ajusta permissões para escrita no storage e cache
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
