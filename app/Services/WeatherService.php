@@ -12,9 +12,9 @@ class WeatherService
     {
         $certPath = 'C:/laragon/bin/php/php-8.3.30-Win32-vs16-x64/extras/ssl/cacert.pem';
 
-        $client = Http::withOptions([
-            'verify' => file_exists($certPath) ? $certPath : true,
-        ]);
+        $client = Http::when(app()->environment('local') && file_exists($certPath), function ($http) use ($certPath) {
+            return $http->withOptions(['verify' => $certPath]);
+        });
 
         $geoResponse = $client->get('https://geocoding-api.open-meteo.com/v1/search', [
             'name' => $city,
