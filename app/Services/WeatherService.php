@@ -32,12 +32,14 @@ class WeatherService
         $long = $location['longitude'];
         $cityName = $location['name'] . (!empty($location['admin1']) ? ' - ' . $location['admin1'] : '');
 
+        $timezone = $location['timezone'] ?? 'America/Sao_Paulo';
+
         $weatherResponse = $client->get('https://api.open-meteo.com/v1/forecast', [
             'latitude' => $lat,
             'longitude' => $long,
             'current_weather' => true,
             'daily' => 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode',
-            'timezone' => 'auto',
+            'timezone' => $timezone,
         ]);
 
         if ($weatherResponse->failed()) {
@@ -51,7 +53,7 @@ class WeatherService
 
         foreach ($daily['time'] as $index => $date) {
             $forecast[] = [
-                'date' => Carbon::parse($date)->locale('pt-BR')->translatedFormat('d/m (D)'),
+                'date' => Carbon::parse($date)->locale('pt_BR')->translatedFormat('d/m (D)'),
                 'max_temp' => round($daily['temperature_2m_max'][$index]),
                 'min_temp' => round ($daily['temperature_2m_min'][$index]),
                 'rain_prob' => $daily['precipitation_probability_max'][$index],
