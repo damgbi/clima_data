@@ -3,13 +3,20 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Carbon\Carbon;
 use Exception;
 
 class WeatherService
 {
     public function getWeather(string $city): array
     {
-        $geoResponse = Http::get('https://geocoding-api.open-meteo.com/v1/search', [
+        $certPath = 'C:/laragon/bin/php/php-8.3.30-Win32-vs16-x64/extras/ssl/cacert.pem';
+
+        $client = Http::withOptions([
+            'verify' => file_exists($certPath) ? $certPath : true,
+        ]);
+
+        $geoResponse = $client->get('https://geocoding-api.open-meteo.com/v1/search', [
             'name' => $city,
             'count' => 1,
             'language' => 'pt',
@@ -23,12 +30,13 @@ class WeatherService
         $location = $geoResponse -> json()['results'][0];
         $lat = $location['latitude'];
         $long = $location['longitude'];
-        $cityName = $location['name'] . ($location['admin1'] ? ' - ' . $location['admin1'] : '');
+        $cityName = $location['name'] . (!empty($location['admin1']) ? ' - ' . $location['admin1'] : '');
 
-        $weatherResponse = Http::get('https://api.open-meteo.com/v1/forecast', [
+        $weatherResponse = $client->get('https://api.open-meteo.com/v1/forecast', [
             'latitude' => $lat,
             'longitude' => $long,
             'current_weather' => true,
+            'daily' => 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode',
             'timezone' => 'auto',
         ]);
 
@@ -36,14 +44,30 @@ class WeatherService
             throw new Exception('Não foi possivel obter os dados meteorológicos. Por favor, tente novamente.');
         }
 
-        $currentWeather = $weatherResponse->json()['current_weather'];
+        $data = $weatherResponse->json();
+        $current = $data['current_weather'];
+        $daily = $data['daily'];
+        $forecast = [];
 
-        $weatherData = [
+        foreach ($daily['time'] as $index => $date) {
+            $forecast[] = [
+                'date' => Carbon::parse($date)->locale('pt-BR')->translatedFormat('d/m (D)'),
+                'max_temp' => round($daily['temperature_2m_max'][$index]),
+                'min_temp' => round ($daily['temperature_2m_min'][$index]),
+                'rain_prob' => $daily['precipitation_probability_max'][$index],
+                'weathercode' => $daily['weathercode'][$index]
+            ];
+        }
+
+        return [
             'city' => $cityName,
-            'temperature' => $currentWeather['temperature'],
-            'windspeed' => $currentWeather['windspeed'],
-            'winddirection' => $currentWeather['winddirection'],
-            'weathercode' => $currentWeather['weathercode'],
+            'current' => [
+                'temperature' => round($current['temperature']),
+                'windspeed' => $current['windspeed'],
+                'winddirection' => $current['winddirection'],
+                'time' => Carbon::parse($current['time'])->format('H:i'),
+            ],
+            'forecast' => $forecast
         ];
     }    
 }
