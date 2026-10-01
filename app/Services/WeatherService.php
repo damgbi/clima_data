@@ -4,77 +4,80 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Exception;
 
 class WeatherService
 {
     public function getWeather(string $city): array
     {
-        $certPath = 'C:/laragon/bin/php/php-8.3.30-Win32-vs16-x64/extras/ssl/cacert.pem';
+        $cacheKey = 'weather_' . str()->slug($city);
 
-        $client = Http::when(app()->environment('local') && file_exists($certPath), function ($http) use ($certPath) {
-            return $http->withOptions(['verify' => $certPath]);
-        });
+        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($city) {
+            $apiKey = config('services.weatherapi.key');
 
-        $geoResponse = $client->get('https://geocoding-api.open-meteo.com/v1/search', [
-            'name' => $city,
-            'count' => 1,
-            'language' => 'pt',
-            'format' => 'json',
-        ]);
+            if(!$apiKey) {
+                throw new Exception('Chave da API de clima não foi configurado.');
+            }
 
-        if ($geoResponse->failed() || empty($geoResponse->json()['results'])) {
-            throw new Exception('Cidade não encontrada. Por favor, tente novamente.');
-        }
+            $certPath = 'C:/laragon/bin/php/php-8.3.30-Win32-vs16-x64/extras/ssl/cacert.pem';
 
-        $location = $geoResponse -> json()['results'][0];
-        $lat = $location['latitude'];
-        $long = $location['longitude'];
-        $cityName = $location['name'] . (!empty($location['admin1']) ? ' - ' . $location['admin1'] : '');
+            $client = Http::when(app()->environment('local') && file_exists($certPath), function ($http) use ($certPath) {
+                return $http->withOptions(['verify' => $certPath]);
+            });
 
-        $timezone = $location['timezone'] ?? 'America/Sao_Paulo';
-
-        $weatherResponse = $client->get('https://api.open-meteo.com/v1/forecast', [
-            'latitude' => $lat,
-            'longitude' => $long,
-            'current_weather' => true,
-            'daily' => 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode',
-            'timezone' => $timezone,
-        ]);
-
-        if ($weatherResponse->failed()) {
-            \Illuminate\Support\Facades\Log::error('Erro Open-Meteo:', [
-                'status' => $weatherResponse->status(),
-                'body'   => $weatherResponse->body(),
+            $response = $client->get('https://api.weatherapi.com/v1/forecast.json', [
+                'key' => $apiKey,
+                'q' => $city,
+                'days' => 7,
+                'lang' => 'pt',
+                'aqi' => 'no',
+                'alerts' => 'no',
             ]);
 
-            throw new Exception('Não foi possivel obter os dados meteorológicos. Por favor, tente novamente.');
-        }
+            if ($response->failed()) {
+                Log::error('Erro WeatherAPI:', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
 
-        $data = $weatherResponse->json();
-        $current = $data['current_weather'];
-        $daily = $data['daily'];
-        $forecast = [];
+                if($response->status() === 400 || $response->status() === 404) {
+                    throw new Exception('Cidade não encontrada. Por favor, verifique o nome da cidade e tente novamente.');
+                }
 
-        foreach ($daily['time'] as $index => $date) {
-            $forecast[] = [
-                'date' => Carbon::parse($date)->locale('pt_BR')->translatedFormat('d/m (D)'),
-                'max_temp' => round($daily['temperature_2m_max'][$index]),
-                'min_temp' => round ($daily['temperature_2m_min'][$index]),
-                'rain_prob' => $daily['precipitation_probability_max'][$index],
-                'weathercode' => $daily['weathercode'][$index]
+                throw new Exception('Não foi possivel obter os dados meteorológicos. Por favor, tente novamente.');
+            }
+
+            $data = $response -> json();
+            $location = $data['location'];
+            $current = $data['current'];
+            $forecastDays = $data['forecast']['forecastday'];
+
+            $cityName = $location['name'] . (!empty($location['region']) ? ' - ' . $location['region'] : '');
+
+            $forecast = [];
+
+            foreach ($forecastDays as $day) {
+                $forecast[] = [
+                    'date' => Carbon::parse($day['date'])->locale('pt_BR')->translatedFormat('d/m (D)'),
+                    'max_temp' => round($day['day']['maxtemp_c']),
+                    'min_temp' => round($day['day']['mintemp_c']),
+                    'rain_prob' => $day['day']['daily_chance_of_rain'] ?? 0,
+                    'weathercode' => $day['day']['condition']['code'],
+                ];
+            }
+
+            return [
+                'city' => $cityName,
+                'current' => [
+                    'temperature' => round($current['temp_c']),
+                    'windspeed' => $current['wind_kph'],
+                    'winddirection' => $current['wind_degree'],
+                    'time' => Carbon::parse($location['localtime'])->format('H:i'),
+                ],
+                'forecast' => $forecast
             ];
-        }
-
-        return [
-            'city' => $cityName,
-            'current' => [
-                'temperature' => round($current['temperature']),
-                'windspeed' => $current['windspeed'],
-                'winddirection' => $current['winddirection'],
-                'time' => Carbon::parse($current['time'])->format('H:i'),
-            ],
-            'forecast' => $forecast
-        ];
+        });    
     }    
 }
