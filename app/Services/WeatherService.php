@@ -52,7 +52,21 @@ class WeatherService
             $data = $response -> json();
             $location = $data['location'];
             $current = $data['current'];
+            $todayHours = $data['forecast']['forecastday'][0]['hour'];
+
             $forecastDays = $data['forecast']['forecastday'];
+
+            $hourlyForecast = [];
+            foreach ($todayHours as $hourData) {
+                $time = Carbon::parse($hourData['time'])->format('H');
+                if (in_array($time, ['09', '12', '15', '18'])) {
+                    $hourlyForecast[] = [
+                        'time' => $time . 'h',
+                        'temp' => round($hourData['temp_c']),
+                        'condition_code' => $hourData['condition']['code'],
+                    ];
+                }
+            }
 
             $cityName = $location['name'] . (!empty($location['region']) ? ' - ' . $location['region'] : '');
 
@@ -72,10 +86,12 @@ class WeatherService
                 'city' => $cityName,
                 'current' => [
                     'temperature' => round($current['temp_c']),
+                    'humidity' => $current['humidity'],
                     'windspeed' => $current['wind_kph'],
-                    'winddirection' => $current['wind_degree'],
-                    'time' => Carbon::parse($location['localtime'])->format('H:i'),
+                    'lat' => $location['lat'],
+                    'lon' => $location['lon']
                 ],
+                'hourly' => $hourlyForecast,
                 'forecast' => $forecast
             ];
         });    
